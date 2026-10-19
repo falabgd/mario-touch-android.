@@ -1,0 +1,263 @@
+name: Build Mario Touch APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Criar projeto Android
+        run: |
+          mkdir -p app/src/main/java/com/mariotouch
+          mkdir -p app/src/main/res/values
+
+          cat > settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "MarioTouch"
+          include ':app'
+          EOF
+
+          cat > build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.7.3' apply false
+          }
+          EOF
+
+          cat > app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.mariotouch'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.mariotouch'
+                  minSdk 23
+                  targetSdk 28
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:theme="@android:style/Theme.Material.NoActionBar"
+                  android:label="Mario Touch"
+                  android:usesCleartextTraffic="false">
+                  <activity
+                      android:name=".MainActivity"
+                      android:screenOrientation="landscape"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/mariotouch/MainActivity.java <<'EOF'
+          package com.mariotouch;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.graphics.Canvas;
+          import android.graphics.Color;
+          import android.graphics.Paint;
+          import android.graphics.RectF;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.WindowManager;
+
+          public class MainActivity extends Activity {
+              @Override
+              public void onCreate(Bundle state) {
+                  super.onCreate(state);
+                  getWindow().getDecorView().setSystemUiVisibility(
+                      5894 | 1024 | 512 | 4096);
+                  getWindow().addFlags(
+                      WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                  setContentView(new GameView());
+              }
+
+              class GameView extends View {
+                  Paint p = new Paint(3);
+                  String status = "MARIO TOUCH";
+                  float downX, downY;
+                  boolean left, right, run, jump;
+                  RectF runBox = new RectF();
+                  RectF jumpBox = new RectF();
+                  RectF startBox = new RectF();
+                  RectF selectBox = new RectF();
+
+                  GameView() {
+                      super(MainActivity.this);
+                      setFocusable(true);
+                  }
+
+                  void box(Canvas c, RectF r, String label,
+                           boolean active) {
+                      p.setColor(active
+                          ? Color.argb(210, 255, 190, 65)
+                          : Color.argb(115, 255, 255, 255));
+                      c.drawRoundRect(r, 22, 22, p);
+                      p.setColor(Color.WHITE);
+                      p.setTextAlign(Paint.Align.CENTER);
+                      p.setTextSize(Math.max(16, getWidth() * 0.023f));
+                      c.drawText(label, r.centerX(),
+                          r.centerY() + p.getTextSize() * 0.35f, p);
+                  }
+
+                  @Override
+                  protected void onDraw(Canvas c) {
+                      super.onDraw(c);
+                      int w = getWidth(), h = getHeight();
+                      c.drawColor(Color.rgb(100, 175, 245));
+
+                      p.setColor(Color.rgb(95, 190, 95));
+                      c.drawRect(0, h * .78f, w, h, p);
+
+                      p.setColor(Color.rgb(145, 90, 45));
+                      c.drawRect(0, h * .84f, w, h, p);
+
+                      p.setColor(Color.WHITE);
+                      p.setTextAlign(Paint.Align.CENTER);
+                      p.setTextSize(Math.max(18, h * .055f));
+                      c.drawText(status, w / 2f, h * .17f, p);
+
+                      p.setTextSize(Math.max(12, h * .033f));
+                      c.drawText("TOQUE E DESLIZE PARA MOVER",
+                          w * .25f, h * .35f, p);
+
+                      float s = h * .14f;
+                      runBox.set(w - s * 2.7f, h - s * 1.7f,
+                                 w - s * 1.45f, h - s * .45f);
+                      jumpBox.set(w - s * 1.35f, h - s * 1.7f,
+                                  w - s * .1f, h - s * .45f);
+                      startBox.set(w * .43f, h * .84f,
+                                   w * .52f, h * .96f);
+                      selectBox.set(w * .54f, h * .84f,
+                                    w * .65f, h * .96f);
+
+                      box(c, runBox, "RUN", run);
+                      box(c, jumpBox, "JUMP", jump);
+                      box(c, startBox, "START", false);
+                      box(c, selectBox, "SELECT", false);
+
+                      p.setColor(Color.argb(115, 255,255,255));
+                      c.drawCircle(w * .12f, h * .72f,
+                                   h * .12f, p);
+                      p.setColor(Color.WHITE);
+                      p.setTextSize(h * .035f);
+                      c.drawText("MOVE", w * .12f, h * .73f, p);
+
+                      p.setTextSize(h * .025f);
+                      c.drawText("PROTOTIPO DE CONTROLES",
+                          w / 2f, h * .06f, p);
+                  }
+
+                  @Override
+                  public boolean onTouchEvent(MotionEvent e) {
+                      int action = e.getActionMasked();
+                      int index = e.getActionIndex();
+                      float x = e.getX(index), y = e.getY(index);
+
+                      if (action == MotionEvent.ACTION_DOWN ||
+                          action == MotionEvent.ACTION_POINTER_DOWN) {
+                          downX = x;
+                          downY = y;
+                      }
+
+                      if (action == MotionEvent.ACTION_UP ||
+                          action == MotionEvent.ACTION_POINTER_UP ||
+                          action == MotionEvent.ACTION_CANCEL) {
+                          run = false;
+                          jump = false;
+                          left = false;
+                          right = false;
+                          invalidate();
+                          return true;
+                      }
+
+                      if (action == MotionEvent.ACTION_MOVE ||
+                          action == MotionEvent.ACTION_DOWN) {
+                          float w = getWidth(), h = getHeight();
+                          run = runBox.contains(x, y);
+                          jump = jumpBox.contains(x, y);
+
+                          if (x < w * .42f) {
+                              float dx = x - downX;
+                              left = dx < -18;
+                              right = dx > 18;
+                              if (Math.abs(dx) > 18) {
+                                  status = right ? "MOVENDO: DIREITA"
+                                                 : "MOVENDO: ESQUERDA";
+                              } else {
+                                  status = "MARIO TOUCH";
+                              }
+                          }
+
+                          if (startBox.contains(x, y))
+                              status = "START";
+                          if (selectBox.contains(x, y))
+                              status = "SELECT";
+
+                          invalidate();
+                      }
+                      return true;
+                  }
+              }
+          }
+          EOF
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Compilar APK
+        run: gradle assembleDebug
+
+      - name: Disponibilizar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mario-Touch-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
